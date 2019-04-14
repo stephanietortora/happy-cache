@@ -1,130 +1,98 @@
-//package happycache
-//
-//import java.util.NoSuchElementException
-//
-//import scala.collection.immutable
-//import scala.collection.immutable.{HashMap, Seq, Queue, Stack}
-//import scala.concurrent.{ExecutionContext, Future}
-//import scala.util.Success
-//
-////trait CacheEntry[K, V] { self: { def copy(key: K= this.key, futureVal: Future[V] = this.futureVal, timeUpdated: Long = this.timeUpdated): CacheEntry[K,V] } =>
-////  val key: K
-////  val futureVal: Future[V]
-////  val timeUpdated: Long
-////
-////  def apply(key: K, futureVal: Future[V], timeUpdated: Long): CacheEntry[K, V]
-////}
-//
-//case class CacheEntry[K, V](key: K, futureVal: Future[V], timeUpdated: Long)
-//
-//trait Cache[K, V, C <: CacheEntry[K, V], T <: Seq[C], U <: IndexedSeq[T]] {
-//  // update: Replace[K, V],
-//  // replace: Replace[K, V]){
-//  val numSet: Int
-//  val numEntry: Int
-//  var cache: U
-//
-//  def f: K => Future[V]
-//
-//  def c: (K, Future[V], Long) => C
-//
-//  def update: (T, C) => T
-//
-//  def replace: (T, C) => T
-//
-//  def apply(k: K): Future[V] = {
-//
-//    val entries = cache(k.hashCode() % numSet)
-//    entries.find { t => t.key == k } match {
-//      case Some(ce) =>
-//        cache = cache.updated(k.hashCode() % numSet, update(entries, ce)).asInstanceOf[U]
-//        ce.futureVal
-//      case None =>
-//        val r: Future[V] = f(k)
-//        cache = cache.updated(k.hashCode() % numSet, replace(entries, c(k, r, System.currentTimeMillis()))).asInstanceOf[U]
-//        r
-//    }
-//  }
-//}
-//
-//trait VectorCache[K, V, C <: CacheEntry[K, Future[V]], T <: Seq[C]] extends Cache[K, V, C, T, Vector[T]] {
-//  override var cache: Vector[T]
-//}
-//
-//trait QueueVectorCache[K, V, C <: CacheEntry[K, Future[V]]] extends VectorCache[K, V, C, Queue[C]] {
-//  override var cache: Vector[Queue[C]]
-//}
-//
-//
-//object Cache {
-//  type Replace[K, V] = (Seq[CacheEntry[K, Future[V]]], CacheEntry[K, Future[V]]) => Seq[CacheEntry[K, Future[V]]]
-//
-//  def futurify[K, V](f: K => V)(implicit ec: ExecutionContext): K => Future[V] = (k: K) => Future(f(k))
-//
-//  private class LRUCache extends
-//
-//  def lruCache[K, V](numSet: Int, numEntry: Int, f: K => Future[V])(implicit ec: ExecutionContext): QueueVectorCache[K, V, CacheEntry[K, Future[V]]] =
-//    new QueueVectorCache[K, V, CacheEntry[K, Future[V]]] {
-//
-//    var cache = Vector.fill(numSet) { Queue.empty[CacheEntry[K,Future[V]]] }
-//
-//    def c(k: K, f: Future[V], t: Long) = CacheEntry(k, f, t)
-//
-//    def replace(entries: Queue[CacheEntry[K, Future[V]]], replaceWith: CacheEntry[K, Future[V]]) ={
-//        val e = entries.enqueue(replaceWith)
-//        if (e.size > numEntry) e.dequeue._2
-//        else e
-//    }
-//
-//    def update(entries: Queue[CacheEntry[K, Future[V]]], toReplace: CacheEntry[K, Future[V]] ) = {
-//        toReplace.copy(timeUpdated = System.currentTimeMillis()) +: entries.filterNot(_ == toReplace)
-//
-//    }
-//
-//
-//  }
-//  def qcache[K,V](numSet: Int, numEntry: Int, f: K => Future[V], )
-//
-//  //  def mruCache[K, V](numSet: Int, numEntry: Int, f: K => Future[V])(implicit ec: ExecutionContext): Cache[K, V] = {
-//  //    val queues: Vector[List[(K, Future[V])]] = Vector.fill(numSet) {
-//  //      immutable.List.empty[(K, Future[V])]
-//  //    }
-//  //
-//  //    val get: K => Future[V] =
-//  //      k => {
-//  //        val queue = queues(k.hashCode() % numSet)
-//  //        queue.find { t => t._1 == k } match {
-//  //          case Some((_, v)) => v;
-//  //          case None => Future.failed(new NoSuchElementException())
-//  //        }
-//  //      }
-//  //
-//  //
-//  //    val put: (K, Future[V]) => Unit =
-//  //      (k: K, v: Future[V]) => {
-//  //        var q: List[(K, Future[V])] = queues(k.hashCode() % numSet)
-//  //        q = (k, v) :: q
-//  //
-//  //        if (q.size > numEntry) {
-//  //          queues(k.hashCode() % numSet) = q tail
-//  //        }
-//  //      }
-//  //
-//  //    cache((k: K) => get(k), f, put)
-//  //
-//  //  }
-//
-//  def cache[K, V, C <: CacheEntry[K, Future[V]], T <: Seq[C], U <: IndexedSeq[T]]
-//
-//  (
-//  implicit ec: ExecutionContext
-//  ): Cache[K, V] =
-//
-//
-//}
-//
-//}
-//
+package happycache
+
+trait CacheEntry[K, V] extends Ordered[CacheEntry[K,V]] {
+  val key: K
+  val value: V
+  val timeUpdated: Long
+
+  implicit def compare(that: CacheEntry[K,V]): Int
+  def apply(key: K, value: V, timeUpdated: Long): CacheEntry[K,V]
+  def copy(key: K = this.key, value: V = this.value, timeUpdated: Long = this.timeUpdated): CacheEntry[K,V]
+}
+
+trait Cache[K, V] {
+  def get(k: K): Option[V]
+
+  def put(k: K, v: V): Unit
+}
+
+object Cache {
+
+
+  private case class CacheEntryTime[K, V](key: K, value: V, timeUpdated: Long) extends CacheEntry[K, V] {
+    def copy(key: K = this.key, value: V = this.value, timeUpdated: Long = this.timeUpdated): CacheEntryTime[K, V] = CacheEntryTime(key, value, timeUpdated)
+    override def apply(key: K, value: V, timeUpdated: Long): CacheEntry[K, V] = CacheEntryTime(key, value, timeUpdated).asInstanceOf[CacheEntry[K,V]]
+    implicit def compare(that: CacheEntry[K, V]): Int = this.timeUpdated.compareTo(that.timeUpdated)
+  }
+
+
+  private class CacheImpl[K, V]
+  (numSet: Int,
+   numEntry: Int,
+   update: (collection.immutable.SortedSet[CacheEntry[K,V]], CacheEntry[K,V]) => (collection.immutable.SortedSet[CacheEntry[K,V]], CacheEntry[K,V]),
+   newEntry: (K, V, Long) => CacheEntry[K,V])(implicit ordering: Ordering[CacheEntry[K,V]]) extends Cache[K, V] {
+    type T = CacheEntry[K,V]
+
+    private var cache = Vector.fill(numSet) {
+      (collection.immutable.HashMap.empty[K, T], collection.immutable.SortedSet.empty[T])
+    }
+
+    def get(k: K): Option[V] = {
+
+
+      val (map: collection.immutable.HashMap[K, T], set: collection.immutable.SortedSet[T]) = cache(k.hashCode() % numSet)
+      map.get(k) match {
+        case Some(ce: T) =>
+          cache = cache.updated(k.hashCode() % numSet, (map, (set - ce) + ce.copy(timeUpdated = System.currentTimeMillis()))) //todo a lot of copying?
+          Some(ce.value)
+        case None => None
+
+      }
+    }
+
+    def put(k: K, v: V): Unit = {
+      val (map: collection.immutable.HashMap[K, T], set: collection.immutable.SortedSet[T]) = cache(k.hashCode() % numSet)
+      map.get(k) match {
+        case Some(ce) =>
+        //noop
+        case None =>
+          val ce = newEntry(k, v, System.currentTimeMillis()) //todo fix to be cache entry trait
+          if (map.size < numEntry) {
+
+            cache = cache.updated(k.hashCode() % numSet, (map + (k -> ce), set + ce))
+
+          } else {
+            val (newSet, removeK) = update(set, ce)
+            cache = cache.updated(k.hashCode() % numSet, (map - removeK.key + (k -> ce), newSet))
+          }
+      }
+    }
+  }
+  def mruCache[K, V](numSet: Int, numEntry: Int)(implicit ordering: Ordering[CacheEntry[K,V]]):Cache[K,V] = {
+    def newEntry: (K, V, Long) => CacheEntry[K,V] = (k: K, v: V, l: Long) => CacheEntryTime(k, v, l)
+
+    def update(entries: collection.immutable.SortedSet[CacheEntry[K,V]], toReplace: CacheEntry[K,V]): (collection.immutable.SortedSet[CacheEntry[K,V]], CacheEntry[K,V]) = {
+      (entries.init + toReplace, entries.last)
+
+    }
+    new CacheImpl[K, V](numSet, numEntry, update, newEntry)
+  }
+
+
+
+
+  def lruCache[K, V](numSet: Int, numEntry: Int)(implicit ordering: Ordering[CacheEntry[K,V]]):Cache[K,V] = {
+    def newEntry: (K, V, Long) => CacheEntry[K,V] = (k: K, v: V, l: Long) => CacheEntryTime(k, v, l)
+
+    def update(entries: collection.immutable.SortedSet[CacheEntry[K,V]], toReplace: CacheEntry[K,V]): (collection.immutable.SortedSet[CacheEntry[K,V]], CacheEntry[K,V]) = {
+      (entries.tail + toReplace, entries.head)
+
+    }
+    new CacheImpl[K, V](numSet, numEntry, update, newEntry)
+  }
+
+}
+
 
 
 
