@@ -67,7 +67,7 @@ class CacheSpec extends FlatSpec with OptionValues {
 
   }
 
-  behavior of "MRU Fib"
+  behavior of "MRU"
 
   val mruCache = Cache.mruCache[Int, String](3, 5)
 
