@@ -22,6 +22,7 @@ trait Cache[K, V] {
 object Cache {
 
   private case class CacheEntryTime[K, V](key: K, value: V, timeUpdated: Long) extends CacheEntry[K, V] {
+
     def copy(key: K = this.key, value: V = this.value, timeUpdated: Long = this.timeUpdated): CacheEntryTime[K, V] = CacheEntryTime(key, value, timeUpdated)
 
     override def apply(key: K, value: V, timeUpdated: Long): CacheEntry[K, V] = CacheEntryTime(key, value, timeUpdated).asInstanceOf[CacheEntry[K, V]]
@@ -34,16 +35,15 @@ object Cache {
    numEntry: Int,
    update: (SortedSet[CacheEntry[K, V]], CacheEntry[K, V]) => (SortedSet[CacheEntry[K, V]], CacheEntry[K, V]),
    newEntry: (K, V, Long) => CacheEntry[K, V])(implicit ordering: Ordering[CacheEntry[K, V]]) extends Cache[K, V] {
-    type T = CacheEntry[K, V]
 
     private var cache = Vector.fill(numSet) {
-      (HashMap.empty[K, T], SortedSet.empty[T])
+      (HashMap.empty[K, CacheEntry[K, V]], SortedSet.empty[CacheEntry[K, V]])
     }
 
     def get(k: K): Option[V] = {
-      val (map: HashMap[K, T], set: SortedSet[T]) = cache(k.hashCode() % numSet)
+      val (map: HashMap[K, CacheEntry[K, V]], set: SortedSet[CacheEntry[K, V]]) = cache(k.hashCode() % numSet)
       map.get(k) match {
-        case Some(ce: T) =>
+        case Some(ce: CacheEntry[K, V]) =>
           cache = cache.updated(k.hashCode() % numSet, (map, (set - ce) + ce.copy(timeUpdated = System.currentTimeMillis()))) //todo a lot of copying?
           Some(ce.value)
         case None => None
@@ -52,7 +52,7 @@ object Cache {
     }
 
     def put(k: K, v: V): Unit = {
-      val (map: HashMap[K, T], set: SortedSet[T]) = cache(k.hashCode() % numSet)
+      val (map: HashMap[K, CacheEntry[K, V]], set: SortedSet[CacheEntry[K, V]]) = cache(k.hashCode() % numSet)
       map.get(k) match {
         case Some(ce) =>
         //noop
