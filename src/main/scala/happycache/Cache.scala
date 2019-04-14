@@ -1,5 +1,5 @@
 package happycache
-import collection.immutable.SortedSet
+import collection.immutable.{SortedSet, HashMap}
 
 trait CacheEntry[K, V] extends Ordered[CacheEntry[K, V]] {
   val key: K
@@ -32,16 +32,16 @@ object Cache {
   private class CacheImpl[K, V]
   (numSet: Int,
    numEntry: Int,
-   update: (collection.immutable.SortedSet[CacheEntry[K, V]], CacheEntry[K, V]) => (collection.immutable.SortedSet[CacheEntry[K, V]], CacheEntry[K, V]),
+   update: (SortedSet[CacheEntry[K, V]], CacheEntry[K, V]) => (SortedSet[CacheEntry[K, V]], CacheEntry[K, V]),
    newEntry: (K, V, Long) => CacheEntry[K, V])(implicit ordering: Ordering[CacheEntry[K, V]]) extends Cache[K, V] {
     type T = CacheEntry[K, V]
 
     private var cache = Vector.fill(numSet) {
-      (collection.immutable.HashMap.empty[K, T], collection.immutable.SortedSet.empty[T])
+      (HashMap.empty[K, T], SortedSet.empty[T])
     }
 
     def get(k: K): Option[V] = {
-      val (map: collection.immutable.HashMap[K, T], set: collection.immutable.SortedSet[T]) = cache(k.hashCode() % numSet)
+      val (map: HashMap[K, T], set: SortedSet[T]) = cache(k.hashCode() % numSet)
       map.get(k) match {
         case Some(ce: T) =>
           cache = cache.updated(k.hashCode() % numSet, (map, (set - ce) + ce.copy(timeUpdated = System.currentTimeMillis()))) //todo a lot of copying?
@@ -52,7 +52,7 @@ object Cache {
     }
 
     def put(k: K, v: V): Unit = {
-      val (map: collection.immutable.HashMap[K, T], set: collection.immutable.SortedSet[T]) = cache(k.hashCode() % numSet)
+      val (map: HashMap[K, T], set: SortedSet[T]) = cache(k.hashCode() % numSet)
       map.get(k) match {
         case Some(ce) =>
         //noop
@@ -72,7 +72,7 @@ object Cache {
 
 
   def mruCache[K, V](numSet: Int, numEntry: Int)(implicit ordering: Ordering[CacheEntry[K, V]]): Cache[K, V] = {
-    def update(entries: collection.immutable.SortedSet[CacheEntry[K, V]], toReplace: CacheEntry[K, V]): (collection.immutable.SortedSet[CacheEntry[K, V]], CacheEntry[K, V]) = {
+    def update(entries: SortedSet[CacheEntry[K, V]], toReplace: CacheEntry[K, V]): (SortedSet[CacheEntry[K, V]], CacheEntry[K, V]) = {
       (entries.init + toReplace, entries.last)
 
     }
@@ -80,7 +80,7 @@ object Cache {
   }
 
   def lruCache[K, V](numSet: Int, numEntry: Int)(implicit ordering: Ordering[CacheEntry[K, V]]): Cache[K, V] = {
-    def update(entries: collection.immutable.SortedSet[CacheEntry[K, V]], toReplace: CacheEntry[K, V]): (collection.immutable.SortedSet[CacheEntry[K, V]], CacheEntry[K, V]) = {
+    def update(entries: SortedSet[CacheEntry[K, V]], toReplace: CacheEntry[K, V]): (SortedSet[CacheEntry[K, V]], CacheEntry[K, V]) = {
       (entries.tail + toReplace, entries.head)}
 
     cache(numSet, numEntry, update)
