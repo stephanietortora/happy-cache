@@ -1,4 +1,4 @@
-package happycache
+package stephanietortora
 
 import org.scalatest.{AsyncFlatSpec, FlatSpec, OptionValues}
 
@@ -30,7 +30,6 @@ class CacheSpec extends FlatSpec with OptionValues {
     go(n, 0, 1)
 
   }
-
 
   behavior of "LRU fib"
   val lruCache = Cache.lruCache[BigInt, BigInt](3, 5)
