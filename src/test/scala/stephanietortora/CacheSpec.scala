@@ -1,9 +1,8 @@
 package stephanietortora
 
 import org.scalatest.{AsyncFlatSpec, FlatSpec, OptionValues}
-
-import scala.concurrent.{Await, Future}
-import scala.concurrent.duration._
+import Cache._
+import collection.immutable.SortedSet
 
 case class TimedResult[V](result: V, time: Double)
 
@@ -66,6 +65,14 @@ class CacheSpec extends FlatSpec with OptionValues {
 
   }
 
+  it should "update timestamp on get" in {
+    assert(lruCache2.get(1).isDefined) //update 1 timestamp
+    lruCache2.put(16, "16")
+    assert(lruCache2.get(1).isDefined)
+    assert(lruCache2.get(4).isEmpty) //should have replaced oldest (4)
+
+  }
+
   behavior of "MRU"
 
   val mruCache = Cache.mruCache[Int, String](3, 5)
@@ -84,5 +91,21 @@ class CacheSpec extends FlatSpec with OptionValues {
     mruCache.get(15).map(x => assert(x == "15"))
     assert(mruCache.get(12).isEmpty)
 
+  }
+
+  it should "update timestamp on get" in {
+    assert(mruCache.get(1).isDefined) //update 1 timestamp
+    mruCache.put(16, "16")
+    assert(mruCache.get(1).isEmpty) //should have replaced 1 because its now newest
+
+  }
+
+  behavior of "cache with client implemented update"
+
+  val update = (set: SortedSet[CacheEntry[Int, String]], ce: CacheEntry[Int, String]) => (set - set.min + ce, set.min)
+
+  it should "throw error on negative size" in {
+   val c = cache[Int, String](-1, 0, update)
+    assert(true)
   }
 }

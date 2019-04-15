@@ -76,7 +76,8 @@ object Cache {
       val (map: HashMap[K, CacheEntry[K, V]], set: SortedSet[CacheEntry[K, V]]) = cache(k.hashCode() % numSet)
       map.get(k) match {
         case Some(ce: CacheEntry[K, V]) =>
-          cache = cache.updated(k.hashCode() % numSet, (map, (set - ce) + ce.copy(timeUpdated = System.currentTimeMillis()))) //todo a lot of copying?
+          val ne = ce.copy(timeUpdated = System.currentTimeMillis())
+          cache = cache.updated(k.hashCode() % numSet, ((map - ce.key) + (ne.key -> ne), (set - ce) + ne))
           Some(ce.value)
         case None => None
 
@@ -90,7 +91,6 @@ object Cache {
         case None =>
           val ce = CacheEntryTime(k, v, System.currentTimeMillis())
           if (map.size < numEntry) {
-
             cache = cache.updated(k.hashCode() % numSet, (map + (k -> ce), set + ce))
 
           } else {
@@ -100,7 +100,9 @@ object Cache {
       }
     }
   }
-
+  private def checkSize(numSet:Int, numEntry: Int) = {
+    require (numSet >= 0 || numEntry >= 0, "Both the number of sets and number of entries in the cache must be non-negative" )
+  }
   /** Factory for [[stephanietortora.Cache]] with Most Recently Used Replacement Policy
     *
     * Uses default [[stephanietortora.CacheEntry]] implementation
@@ -116,6 +118,7 @@ object Cache {
       (entries.init + toReplace, entries.last)
 
     }
+    checkSize(numSet, numEntry)
     cache(numSet, numEntry, update)
   }
   /** Factory for [[stephanietortora.Cache]] with Least Recently Used Replacement Policy
@@ -130,8 +133,10 @@ object Cache {
     */
   def lruCache[K, V](numSet: Int, numEntry: Int): Cache[K, V] = {
     def update(entries: SortedSet[CacheEntry[K, V]], toReplace: CacheEntry[K, V]): (SortedSet[CacheEntry[K, V]], CacheEntry[K, V]) = {
-      (entries.tail + toReplace, entries.head)}
+      (entries.tail + toReplace, entries.head)
+    }
 
+    checkSize(numSet, numEntry)
     cache(numSet, numEntry, update)
   }
 
@@ -150,7 +155,10 @@ object Cache {
   def cache[K, V](numSet: Int,
                   numEntry: Int,
                   update: (SortedSet[CacheEntry[K, V]], CacheEntry[K, V]) => (SortedSet[CacheEntry[K, V]], CacheEntry[K, V]))
-                  : Cache[K, V] = new CacheImpl(numSet, numEntry, update)
+                  : Cache[K, V] = {
+    checkSize(numSet, numEntry)
+    new CacheImpl(numSet, numEntry, update)
+  }
 
 
 }
