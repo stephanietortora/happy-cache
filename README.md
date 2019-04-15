@@ -43,3 +43,6 @@ object Main extends App {
 
 }
 ```
+
+## Documentation 
+[N-Way Set-Associative Cache Design](doc/NWayCacheDesign.pdf)
