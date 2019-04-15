@@ -104,8 +104,15 @@ class CacheSpec extends FlatSpec with OptionValues {
 
   val update = (set: SortedSet[CacheEntry[Int, String]], ce: CacheEntry[Int, String]) => (set - set.min + ce, set.min)
 
-  it should "throw error on negative size" in {
-   val c = cache[Int, String](-1, 0, update)
-    assert(true)
+  it should "prevent non-positive size" in {
+    val c = cache[Int, String](-1, 0, update)
+    assert(c.numSet == 1 && c.numEntry == 1)
+  }
+
+  val badUpdate = (set: SortedSet[CacheEntry[Int, String]], ce: CacheEntry[Int, String]) => (set + ce, set.min)
+  it should "prevent bad update" in {
+    val c = cache[Int, String](0, 0, badUpdate)
+    c.put(0, "0")
+    assertThrows[IllegalStateException](c.put(1,"1"))
   }
 }

@@ -10,6 +10,9 @@ import collection.immutable.{SortedSet, HashMap}
   */
 trait Cache[K, V] {
 
+  val numSet: Int
+  val numEntry: Int
+
   /** Retrieves value stored for given key from cache
     *
     * @param k key to retrieve
@@ -47,7 +50,7 @@ trait CacheEntry[K, V] extends Ordered[CacheEntry[K, V]] {
     *
     * @param key key
     * @param value value
-    * @param timeUpdated timestamp in millis
+    * @param timeUpdated timestamp in nanos
     * @return a new instance of CacheEntry with field(s) updated
     */
   def copy(key: K = this.key, value: V = this.value, timeUpdated: Long = this.timeUpdated): CacheEntry[K, V]
@@ -63,8 +66,8 @@ object Cache {
   }
 
   private class CacheImpl[K, V]
-  (numSet: Int,
-   numEntry: Int,
+  (val numSet: Int,
+   val numEntry: Int,
    update: (SortedSet[CacheEntry[K, V]], CacheEntry[K, V]) => (SortedSet[CacheEntry[K, V]], CacheEntry[K, V]))
    extends Cache[K, V] {
 
@@ -76,7 +79,7 @@ object Cache {
       val (map: HashMap[K, CacheEntry[K, V]], set: SortedSet[CacheEntry[K, V]]) = cache(k.hashCode() % numSet)
       map.get(k) match {
         case Some(ce: CacheEntry[K, V]) =>
-          val ne = ce.copy(timeUpdated = System.currentTimeMillis())
+          val ne = ce.copy(timeUpdated = System.nanoTime())
           cache = cache.updated(k.hashCode() % numSet, ((map - ce.key) + (ne.key -> ne), (set - ce) + ne))
           Some(ce.value)
         case None => None
@@ -89,20 +92,24 @@ object Cache {
       map.get(k) match {
         case Some(_) => //noop
         case None =>
-          val ce = CacheEntryTime(k, v, System.currentTimeMillis())
+          val ce = CacheEntryTime(k, v, System.nanoTime())
           if (map.size < numEntry) {
             cache = cache.updated(k.hashCode() % numSet, (map + (k -> ce), set + ce))
 
           } else {
             val (newSet, removeK) = update(set, ce)
+            if (newSet.size != numEntry) {
+              throw new IllegalStateException(s"Update function must maintain the size of the set as $numEntry. Size of set is ${newSet.size}")
+            }
             cache = cache.updated(k.hashCode() % numSet, (map - removeK.key + (k -> ce), newSet))
           }
       }
     }
   }
-  private def checkSize(numSet:Int, numEntry: Int) = {
-    require (numSet >= 0 || numEntry >= 0, "Both the number of sets and number of entries in the cache must be non-negative" )
+  private def checkSize(numSet:Int, numEntry: Int): (Int, Int) = {
+    (if (numSet >= 1) numSet else 1, if (numEntry >= 1) numEntry else 1)
   }
+
   /** Factory for [[stephanietortora.Cache]] with Most Recently Used Replacement Policy
     *
     * Uses default [[stephanietortora.CacheEntry]] implementation
@@ -118,8 +125,8 @@ object Cache {
       (entries.init + toReplace, entries.last)
 
     }
-    checkSize(numSet, numEntry)
-    cache(numSet, numEntry, update)
+    val (nSet, nEntry) = checkSize(numSet, numEntry)
+    cache(nSet, nEntry, update)
   }
   /** Factory for [[stephanietortora.Cache]] with Least Recently Used Replacement Policy
     *
@@ -135,9 +142,8 @@ object Cache {
     def update(entries: SortedSet[CacheEntry[K, V]], toReplace: CacheEntry[K, V]): (SortedSet[CacheEntry[K, V]], CacheEntry[K, V]) = {
       (entries.tail + toReplace, entries.head)
     }
-
-    checkSize(numSet, numEntry)
-    cache(numSet, numEntry, update)
+    val (nSet, nEntry) = checkSize(numSet, numEntry)
+    cache(nSet, nEntry, update)
   }
 
   /** Factory for [[stephanietortora.Cache]] with replacement policy implemented by client
@@ -156,8 +162,8 @@ object Cache {
                   numEntry: Int,
                   update: (SortedSet[CacheEntry[K, V]], CacheEntry[K, V]) => (SortedSet[CacheEntry[K, V]], CacheEntry[K, V]))
                   : Cache[K, V] = {
-    checkSize(numSet, numEntry)
-    new CacheImpl(numSet, numEntry, update)
+    val (nSet, nEntry) = checkSize(numSet, numEntry)
+    new CacheImpl(nSet, nEntry, update)
   }
 
 
