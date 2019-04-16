@@ -34,17 +34,11 @@ trait Cache[K, V] {
   * @tparam V value type
   */
 trait CacheEntry[K, V] extends Ordered[CacheEntry[K, V]] {
+  this : Ordered[CacheEntry[K,V]] =>
 
   val key: K
   val value: V
   val timeUpdated: Long
-
-  /** Implicit ordering of entries, used for sorting entries in a set
-    *
-    * @param that another CacheEntry
-    * @return int representing result of comparing this CacheEntry with that CacheEntry
-    */
-  implicit def compare(that: CacheEntry[K, V]): Int
 
   /** Used to update cache entry when it is accessed
     *
