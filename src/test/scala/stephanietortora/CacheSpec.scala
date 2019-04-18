@@ -102,16 +102,17 @@ class CacheSpec extends FlatSpec with OptionValues {
 
   behavior of "cache with client implemented update"
 
-  val update = (set: SortedSet[CacheEntry[Int, String]], ce: CacheEntry[Int, String]) => (set - set.min + ce, set.min)
+
+  val update = (set: SortedSet[CacheEntryTime[Int, String]], ce: CacheEntryTime[Int, String]) => (set - set.min + ce, set.min)
 
   it should "prevent non-positive size" in {
-    val c = cache[Int, String](-1, 0, update)
+    val c = cache[Int, String, CacheEntryTime[Int, String]](-1, 0, update, CacheEntryTime.apply, (ce: CacheEntryTime[Int,String]) => ce.copy(timeUpdated = System.nanoTime()))
     assert(c.numSet == 1 && c.numEntry == 1)
   }
 
-  val badUpdate = (set: SortedSet[CacheEntry[Int, String]], ce: CacheEntry[Int, String]) => (set + ce, set.min)
+  val badUpdate = (set: SortedSet[CacheEntryTime[Int, String]], ce: CacheEntryTime[Int, String]) => (set + ce, set.min)
   it should "prevent bad update" in {
-    val c = cache[Int, String](0, 0, badUpdate)
+    val c = cache[Int, String, CacheEntryTime[Int, String]](0, 0, badUpdate, CacheEntryTime.apply, (ce: CacheEntryTime[Int,String]) => ce.copy(timeUpdated = System.nanoTime()))
     c.put(0, "0")
     assertThrows[IllegalStateException](c.put(1,"1"))
   }

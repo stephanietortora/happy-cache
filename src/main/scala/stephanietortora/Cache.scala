@@ -8,7 +8,7 @@ import collection.immutable.{SortedSet, HashMap}
   * @tparam V value type
   *
   */
-trait Cache[K, V] {
+trait Cache[K, V, T] {
 
   val numSet: Int
   val numEntry: Int
@@ -33,8 +33,7 @@ trait Cache[K, V] {
   * @tparam K key type
   * @tparam V value type
   */
-trait CacheEntry[K, V] extends Ordered[CacheEntry[K, V]] {
-  this : Ordered[CacheEntry[K,V]] =>
+trait CacheEntry[K, V] {
 
   val key: K
   val value: V
@@ -50,31 +49,37 @@ trait CacheEntry[K, V] extends Ordered[CacheEntry[K, V]] {
   def copy(key: K = this.key, value: V = this.value, timeUpdated: Long = this.timeUpdated): CacheEntry[K, V]
 }
 
+class CacheEntryTime[K, V](val key: K,val  value: V, val timeUpdated: Long) extends CacheEntry[K, V] {
+  def copy(key: K = this.key, value: V = this.value, timeUpdated: Long = this.timeUpdated): CacheEntryTime[K, V] = CacheEntryTime(key, value, timeUpdated)
+}
+
+object CacheEntryTime {
+  def apply[K,V](key: K, value: V, timeUpdated: Long) = new CacheEntryTime(key, value, timeUpdated)
+  implicit def orderingByName[K,V]: Ordering[CacheEntryTime[K,V]] =
+    Ordering.by(e => e.timeUpdated)
+}
 /** Factory for [[stephanietortora.Cache]] instances */
 object Cache {
 
-  private case class CacheEntryTime[K, V](key: K, value: V, timeUpdated: Long) extends CacheEntry[K, V] {
-
-    def copy(key: K = this.key, value: V = this.value, timeUpdated: Long = this.timeUpdated): CacheEntryTime[K, V] = CacheEntryTime(key, value, timeUpdated)
-    implicit def compare(that: CacheEntry[K, V]): Int = this.timeUpdated.compareTo(that.timeUpdated)
-  }
-
-  private class CacheImpl[K, V]
+  private class CacheImpl[K, V, T <:CacheEntry[K,V] : Ordering]
   (val numSet: Int,
    val numEntry: Int,
-   update: (SortedSet[CacheEntry[K, V]], CacheEntry[K, V]) => (SortedSet[CacheEntry[K, V]], CacheEntry[K, V]))
-   extends Cache[K, V] {
+   update: (SortedSet[T], T) => (SortedSet[T], T),
+   createEntry: (K,V, Long) => T,
+   updateEntry: T => T)
+
+   extends Cache[K, V, T] {
 
     private var cache = Vector.fill(numSet) {
-      (HashMap.empty[K, CacheEntry[K, V]], SortedSet.empty[CacheEntry[K, V]])
+      (HashMap.empty[K, T], SortedSet.empty[T](implicitly[Ordering[T]]))
     }
 
     def get(k: K): Option[V] = {
-      val (map: HashMap[K, CacheEntry[K, V]], set: SortedSet[CacheEntry[K, V]]) = cache(k.hashCode() % numSet)
+      val (map: HashMap[K, T], set: SortedSet[T]) = cache(k.hashCode() % numSet)
       map.get(k) match {
-        case Some(ce: CacheEntry[K, V]) =>
-          val ne = ce.copy(timeUpdated = System.nanoTime())
-          cache = cache.updated(k.hashCode() % numSet, ((map - ce.key) + (ne.key -> ne), (set - ce) + ne))
+        case Some(ce: T) =>
+          val ne: T = updateEntry(ce)
+          cache = cache.updated(k.hashCode() % numSet, (map - ce.key + (ne.key -> ne), (set - ce) + ne))
           Some(ce.value)
         case None => None
 
@@ -82,11 +87,11 @@ object Cache {
     }
 
     def put(k: K, v: V): Unit = {
-      val (map: HashMap[K, CacheEntry[K, V]], set: SortedSet[CacheEntry[K, V]]) = cache(k.hashCode() % numSet)
+      val (map: HashMap[K, T], set: SortedSet[T]) = cache(k.hashCode() % numSet)
       map.get(k) match {
-        case Some(_) => //noop
+        case Some(_) =>
         case None =>
-          val ce = CacheEntryTime(k, v, System.nanoTime())
+          val ce = createEntry(k, v, System.nanoTime())
           if (map.size < numEntry) {
             cache = cache.updated(k.hashCode() % numSet, (map + (k -> ce), set + ce))
 
@@ -100,6 +105,7 @@ object Cache {
       }
     }
   }
+
   private def checkSize(numSet:Int, numEntry: Int): (Int, Int) = {
     (if (numSet >= 1) numSet else 1, if (numEntry >= 1) numEntry else 1)
   }
@@ -114,13 +120,13 @@ object Cache {
     * @tparam V value type
     * @return [[stephanietortora.Cache]]
     */
-  def mruCache[K, V](numSet: Int, numEntry: Int): Cache[K, V] = {
-    def update(entries: SortedSet[CacheEntry[K, V]], toReplace: CacheEntry[K, V]): (SortedSet[CacheEntry[K, V]], CacheEntry[K, V]) = {
+  def mruCache[K, V](numSet: Int, numEntry: Int): Cache[K, V, CacheEntryTime[K,V]] = {
+    def update(entries: SortedSet[CacheEntryTime[K,V]], toReplace: CacheEntryTime[K,V]): (SortedSet[CacheEntryTime[K,V]], CacheEntryTime[K,V]) = {
       (entries.init + toReplace, entries.last)
 
     }
     val (nSet, nEntry) = checkSize(numSet, numEntry)
-    cache(nSet, nEntry, update)
+    cache[K, V, CacheEntryTime[K,V]](nSet, nEntry, update, CacheEntryTime.apply, (ce: CacheEntryTime[K,V]) => ce.copy(timeUpdated = System.nanoTime()) )
   }
   /** Factory for [[stephanietortora.Cache]] with Least Recently Used Replacement Policy
     *
@@ -132,12 +138,12 @@ object Cache {
     * @tparam V value type
     * @return [[stephanietortora.Cache]]
     */
-  def lruCache[K, V](numSet: Int, numEntry: Int): Cache[K, V] = {
-    def update(entries: SortedSet[CacheEntry[K, V]], toReplace: CacheEntry[K, V]): (SortedSet[CacheEntry[K, V]], CacheEntry[K, V]) = {
+  def lruCache[K, V](numSet: Int, numEntry: Int): Cache[K, V, CacheEntryTime[K,V]] = {
+    def update(entries: SortedSet[CacheEntryTime[K, V]], toReplace: CacheEntryTime[K, V]): (SortedSet[CacheEntryTime[K, V]], CacheEntryTime[K, V]) = {
       (entries.tail + toReplace, entries.head)
     }
     val (nSet, nEntry) = checkSize(numSet, numEntry)
-    cache(nSet, nEntry, update)
+    cache[K, V, CacheEntryTime[K,V]](nSet, nEntry, update, CacheEntryTime.apply, (ce: CacheEntryTime[K,V]) => ce.copy(timeUpdated = System.nanoTime()) )
   }
 
   /** Factory for [[stephanietortora.Cache]] with replacement policy implemented by client
@@ -152,12 +158,13 @@ object Cache {
     * @tparam V value type
     * @return [[stephanietortora.Cache]]
     */
-  def cache[K, V](numSet: Int,
+  def cache[K, V, T <: CacheEntry[K,V] : Ordering](numSet: Int,
                   numEntry: Int,
-                  update: (SortedSet[CacheEntry[K, V]], CacheEntry[K, V]) => (SortedSet[CacheEntry[K, V]], CacheEntry[K, V]))
-                  : Cache[K, V] = {
+                  update: (SortedSet[T], T) => (SortedSet[T], T), createEntry: (K,V,Long) => T, updateEntry: T => T)
+
+                  : Cache[K, V, T] = {
     val (nSet, nEntry) = checkSize(numSet, numEntry)
-    new CacheImpl(nSet, nEntry, update)
+    new CacheImpl[K,V,T](nSet, nEntry, update, createEntry, updateEntry)
   }
 
 
